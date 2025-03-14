@@ -30,3 +30,12 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+model Product {
+  id            Int    @id   @default(autoincrement())
+  productId     String
+  title         String?
+  shop          String
+  min           String?
+  max           String?
+}

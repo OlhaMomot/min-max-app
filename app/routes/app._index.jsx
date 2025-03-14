@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { useFetcher } from "@remix-run/react";
+import React, { useCallback, useEffect, useState } from "react";
+import { json, useFetcher, useLoaderData } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -7,321 +7,392 @@ import {
   Card,
   Button,
   BlockStack,
-  Box,
-  List,
   Link,
   InlineStack,
+  IndexTable,
+  useIndexResourceState,
+  useBreakpoints,
+  Filters,
+  FormLayout,
+  TextField,
 } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import { Modal, TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+import db from '../db.server';
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
+  const auth = await authenticate.admin(request);
+  const shop = auth.session.shop;
 
-  return null;
+  const productsData = await db.product.findMany({
+    where: {
+      shop: shop,
+    },
+  });
+
+  return json({ productsData, shop });
 };
 
-export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
-  const product = responseJson.data.productCreate.product;
-  const variantId = product.variants.edges[0].node.id;
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyRemixTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-  const variantResponseJson = await variantResponse.json();
+// export const action = async ({ request }) => {
+//   const { admin } = await authenticate.admin(request);
 
-  return {
-    product: responseJson.data.productCreate.product,
-    variant: variantResponseJson.data.productVariantsBulkUpdate.productVariants,
-  };
-};
+//   return null;
+// };
 
 export default function Index() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
+  const app_url = "https://zu-bm-injured-plates.trycloudflare.com";
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
-  const productId = fetcher.data?.product?.id.replace(
-    "gid://shopify/Product/",
-    "",
-  );
 
-  useEffect(() => {
-    if (productId) {
-      shopify.toast.show("Product created");
+  const data = useLoaderData();
+  const [products, setProducts] = useState(data?.productsData) || [];
+  const [modalValues, setModalValues] = useState({});
+  const [formState, setFormState] = useState({});
+
+  const shop = data?.shop || '';
+
+  // PRODUCT MODALS
+  const openProductModal = (id, min, max, e) => {
+    console.log("Before opening modal:");
+    console.log("Modal iframe detected:", window.location);
+    console.log("Current document body:", document.body);
+    console.log("Can input be focused?", document.activeElement);
+    e.preventDefault();
+    e.stopPropagation();
+
+    setModalValues((prev) => ({
+      ...prev,
+      [id]: { min: min, max: max },
+    }));
+
+    shopify.modal.show(`modal-${id}`);
+    console.log("after opening:", modalValues);
+
+  };
+
+  const handleValueChange = (id, field, value, e) => {
+    console.log(`Updating ${field} for ${id}:`, value);
+    setModalValues((prev) => ({
+      ...prev,
+      [id]: { ...prev[id], [field]: value },
+    }));
+  };
+
+  const hideProductModal = (id, e) => {
+    e.stopPropagation();
+    shopify.modal.hide(id);
+  }
+
+    // ADDING PRODUCT
+    async function selectProduct() {
+      const productsFromShop = await window.shopify.resourcePicker({
+        type: "product",
+        action: "select", // customized action verb, either 'select' or 'add',
+      });
+
+      if (productsFromShop) {
+        const { images, id, variants, title, handle } = productsFromShop[0];
+
+        const updatedFormState = {
+          ...formState,
+          productId: id,
+          productVariantId: variants[0].id,
+          productTitle: title,
+          productHandle: handle,
+          productAlt: images[0]?.altText,
+          productImage: images[0]?.originalSrc,
+        };
+
+        setFormState(updatedFormState);
+
+        try {
+          const formdata = new FormData();
+          formdata.append("productId", id);
+          formdata.append("shop", shop);
+          formdata.append("_action", "CREATE");
+          formdata.append("title", title);
+
+          const requestOptions = {
+            method: "POST",
+            body: formdata,
+            redirect: "follow"
+          };
+
+          const addProductResponse = await fetch(app_url + "/api/products", requestOptions);
+
+          if (!addProductResponse.ok) {
+            throw new Error("Failed to add product");
+          }
+
+          const response = await fetch(app_url + `/api/products?shop=${shop}`);
+          const result = await response.json();
+
+          console.log("Updated products list:", result.data);
+
+          const newProducts = result.data;
+          setProducts(newProducts);
+        } catch (error) {
+          console.error("Error:", error);
+        }
+      }
     }
-  }, [productId, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+
+    // DELETING PRODUCT
+    async function deleteSeclectedProducts() {
+      selectedResources.forEach(async(id) => {
+        try {
+          const formdata = new FormData();
+          formdata.append("productId", id);
+          formdata.append("shop", shop);
+          formdata.append("_action", "DELETE");
+
+          const requestOptions = {
+            method: "DELETE",
+            body: formdata,
+            redirect: "follow"
+          };
+
+            const deleteProductResponse = await fetch(app_url + "/api/products", requestOptions);
+
+            if (!deleteProductResponse.ok) {
+              throw new Error("Failed to delete product");
+            }
+
+            const response = await fetch(app_url + `/api/products?shop=${shop}`);
+            const result = await response.json();
+
+            console.log("Updated products list:", result.data);
+
+            setProducts(result.data);
+            handleSelectionChange();
+        } catch (error) {
+          console.error("Error:", error);
+        }
+      })
+    }
+
+    // UPDATING PRODUCT
+    async function updateProduct(id, e) {
+      e.stopPropagation();
+      const { min, max } = modalValues[id] || {};
+      try {
+        const formdata = new FormData();
+        formdata.append("productId", id);
+        formdata.append("shop", shop);
+        formdata.append("min", min);
+        formdata.append("max", max);
+        formdata.append("_action", "UPDATE");
+
+        const requestOptions = {
+          method: "POST",
+          body: formdata,
+          redirect: "follow"
+        };
+
+        const addProductResponse = await fetch(app_url + "/api/products", requestOptions);
+
+        if (!addProductResponse.ok) {
+          throw new Error("Failed to add product");
+        }
+
+        const response = await fetch(app_url + `/api/products?shop=${shop}`);
+        const result = await response.json();
+
+        console.log("Updated products list:", result.data);
+
+        const newProducts = result.data;
+        setProducts(newProducts);
+        hideProductModal(`modal-${id}`, e);
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    }
+
+    // SEARCH
+    const [queryValue, setQueryValue] = useState('');
+
+    const handleFiltersQueryChange = useCallback(
+      (value) => setQueryValue(value),
+      [],
+    );
+
+    const handleQueryValueRemove = useCallback(() => setQueryValue(''), []);
+
+    const resourceName = {
+      singular: 'product',
+      plural: 'products',
+    };
+
+    const {selectedResources, allResourcesSelected, handleSelectionChange} =
+      useIndexResourceState(products);
+
+    const filteredProducts = products.filter((product) =>
+      product.title.toLowerCase().includes(queryValue.toLowerCase())
+    );
+
+    const rowMarkup = filteredProducts.map(
+      ({productId, title, min, max}, index) => {
+        const productNumberId = productId.split("/").pop();
+        const shopHandle = shop.split('.').shift();
+        const productUrl = `https://admin.shopify.com/store/${shopHandle}/products/${productNumberId}`;
+
+        return (
+            <IndexTable.Row
+              id={productId}
+              key={productId}
+              selected={selectedResources.includes(productId)}
+              position={index}
+            >
+              <IndexTable.Cell>
+                <Link
+                  dataPrimaryLink
+                  url={productUrl}
+                  target="_parent"
+                >
+                  <Text fontWeight="bold" as="span">
+                    {title}
+                  </Text>
+                </Link>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span" numeric>
+                  {min}
+                </Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span" numeric>
+                  {max}
+                </Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Button onClick={(e) => openProductModal(productId, min, max, e)}>Edit</Button>
+
+              </IndexTable.Cell>
+            </IndexTable.Row>
+        )},
+    );
 
   return (
     <Page>
-      <TitleBar title="Remix app template">
-        <button variant="primary" onClick={generateProduct}>
-          Generate a product
-        </button>
+      <TitleBar title="Product management">
       </TitleBar>
+
       <BlockStack gap="500">
-        <Layout>
-          <Layout.Section>
-            <Card>
-              <BlockStack gap="500">
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Congrats on creating a new Shopify app 🎉
-                  </Text>
-                  <Text variant="bodyMd" as="p">
-                    This embedded app template uses{" "}
-                    <Link
-                      url="https://shopify.dev/docs/apps/tools/app-bridge"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      App Bridge
-                    </Link>{" "}
-                    interface examples like an{" "}
-                    <Link url="/app/additional" removeUnderline>
-                      additional page in the app nav
-                    </Link>
-                    , as well as an{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      Admin GraphQL
-                    </Link>{" "}
-                    mutation demo, to provide a starting point for app
-                    development.
-                  </Text>
-                </BlockStack>
-                <BlockStack gap="200">
-                  <Text as="h3" variant="headingMd">
-                    Get started with products
-                  </Text>
-                  <Text as="p" variant="bodyMd">
-                    Generate a product with GraphQL and get the JSON output for
-                    that product. Learn more about the{" "}
-                    <Link
-                      url="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-                      target="_blank"
-                      removeUnderline
-                    >
-                      productCreate
-                    </Link>{" "}
-                    mutation in our API references.
-                  </Text>
-                </BlockStack>
-                <InlineStack gap="300">
-                  <Button loading={isLoading} onClick={generateProduct}>
-                    Generate a product
-                  </Button>
-                  {fetcher.data?.product && (
-                    <Button
-                      url={`shopify:admin/products/${productId}`}
-                      target="_blank"
-                      variant="plain"
-                    >
-                      View product
-                    </Button>
-                  )}
-                </InlineStack>
-                {fetcher.data?.product && (
-                  <>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productCreate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.product, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                    <Text as="h3" variant="headingMd">
-                      {" "}
-                      productVariantsBulkUpdate mutation
-                    </Text>
-                    <Box
-                      padding="400"
-                      background="bg-surface-active"
-                      borderWidth="025"
-                      borderRadius="200"
-                      borderColor="border"
-                      overflowX="scroll"
-                    >
-                      <pre style={{ margin: 0 }}>
-                        <code>
-                          {JSON.stringify(fetcher.data.variant, null, 2)}
-                        </code>
-                      </pre>
-                    </Box>
-                  </>
-                )}
-              </BlockStack>
-            </Card>
-          </Layout.Section>
-          <Layout.Section variant="oneThird">
-            <BlockStack gap="500">
+        <BlockStack gap="500">
+          <Layout>
+            <Layout.Section>
               <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    App template specs
-                  </Text>
+                <BlockStack gap="500">
                   <BlockStack gap="200">
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Framework
-                      </Text>
-                      <Link
-                        url="https://remix.run"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Remix
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Database
-                      </Text>
-                      <Link
-                        url="https://www.prisma.io/"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        Prisma
-                      </Link>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        Interface
-                      </Text>
-                      <span>
-                        <Link
-                          url="https://polaris.shopify.com"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          Polaris
-                        </Link>
-                        {", "}
-                        <Link
-                          url="https://shopify.dev/docs/apps/tools/app-bridge"
-                          target="_blank"
-                          removeUnderline
-                        >
-                          App Bridge
-                        </Link>
-                      </span>
-                    </InlineStack>
-                    <InlineStack align="space-between">
-                      <Text as="span" variant="bodyMd">
-                        API
-                      </Text>
-                      <Link
-                        url="https://shopify.dev/docs/api/admin-graphql"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphQL API
-                      </Link>
-                    </InlineStack>
+                    <Text as="h2" variant="headingMd">
+                      What are product limits?
+                    </Text>
+                    <Text variant="bodyMd" as="p">
+                      Product limits are the minimum and maximum quantity of individual product/variant that your customers may add the their cart.
+                      You have two methods to define product limits for each individual item you offer. Add a product or SKU (variant) from a database of
+                      your offerings or batch upload by CSV
+                    </Text>
                   </BlockStack>
                 </BlockStack>
               </Card>
+            </Layout.Section>
+          </Layout>
+        </BlockStack>
+
+        <BlockStack gap="500">
+          <Layout>
+            <Layout.Section>
               <Card>
-                <BlockStack gap="200">
-                  <Text as="h2" variant="headingMd">
-                    Next steps
-                  </Text>
-                  <List>
-                    <List.Item>
-                      Build an{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/getting-started/build-app-example"
-                        target="_blank"
-                        removeUnderline
+                <BlockStack gap="500">
+                  <InlineStack gap="300">
+                    <Button loading={isLoading} onClick={selectProduct}>
+                      Add Product
+                    </Button>
+
+                    <Button onClick={deleteSeclectedProducts} variant="primary" disabled={!selectedResources.length}>
+                      Delete
+                    </Button>
+                  </InlineStack>
+
+                  <BlockStack gap="200">
+                    <Card>
+                      <Filters
+                        queryValue={queryValue}
+                        queryPlaceholder="Search items"
+                        filters={[]}
+                        appliedFilters={[]}
+                        onQueryChange={handleFiltersQueryChange}
+                        onQueryClear={handleQueryValueRemove}
+                        onClearAll={() => {}}
+                      />
+
+                      <IndexTable
+                        condensed={useBreakpoints().smDown}
+                        resourceName={resourceName}
+                        itemCount={filteredProducts.length}
+                        selectedItemsCount={
+                          allResourcesSelected ? 'All' : selectedResources.length
+                        }
+                        onSelectionChange={handleSelectionChange}
+                        headings={[
+                          {title: 'Product'},
+                          {title: 'Min'},
+                          {title: 'Max'},
+                          {title: 'Actions'},
+                        ]}
                       >
-                        {" "}
-                        example app
-                      </Link>{" "}
-                      to get started
-                    </List.Item>
-                    <List.Item>
-                      Explore Shopify’s API with{" "}
-                      <Link
-                        url="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-                        target="_blank"
-                        removeUnderline
-                      >
-                        GraphiQL
-                      </Link>
-                    </List.Item>
-                  </List>
+                        {rowMarkup}
+                      </IndexTable>
+                    </Card>
+                  </BlockStack>
                 </BlockStack>
               </Card>
-            </BlockStack>
-          </Layout.Section>
-        </Layout>
+            </Layout.Section>
+          </Layout>
+        </BlockStack>
+
+        {filteredProducts.map(
+          ({productId, title, min, max}, index) => {
+            return (
+                <Modal id={`modal-${productId}`} key={`modal-${productId}`}>
+                  <div style={{ padding: '10px' }}>
+                      <Text as="p">
+                        Change Min or Max value for product:
+                      </Text>
+
+                      <FormLayout>
+                        <FormLayout.Group>
+                          <TextField
+                            key={`min-${productId}`}
+                            type="text"
+                            label="Minimum order"
+                            value={modalValues[productId]?.min || ""}
+                            onChange={(value, e) => handleValueChange(productId, 'min', value, e)}
+                            autoComplete="off"
+                          />
+                          <TextField
+                            key={`max-${productId}`}
+                            type="text"
+                            label="Maximum order"
+                            value={modalValues[productId]?.max || ""}
+                            onChange={(value, e) => handleValueChange(productId, 'max', value, e)}
+                            autoComplete="off"
+                          />
+                        </FormLayout.Group>
+                      </FormLayout>
+                  </div>
+
+                  <ui-title-bar title={title}>
+                    <button variant="primary" onClick={(e) => updateProduct(productId, e)}>Update</button>
+                    <button onClick={(e) => hideProductModal(`modal-${productId}`, e)}>Cancel</button>
+                  </ui-title-bar>
+                </Modal>
+            )
+          }
+        )}
       </BlockStack>
     </Page>
   );
