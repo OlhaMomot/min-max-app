@@ -1,0 +1,22 @@
+query RunInput {
+  cart {
+    lines {
+      quantity
+      id
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          product {
+            title
+            minValue: metafield(namespace: "custom", key: "min_value") {
+              value
+            }
+            maxValue: metafield(namespace: "custom", key: "max_value") {
+              value
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -42,7 +42,7 @@ export const loader = async ({ request }) => {
 export default function Index() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
-  const app_url = "https://zu-bm-injured-plates.trycloudflare.com";
+  const app_url = "https://carlo-spanking-urban-transit.trycloudflare.com";
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";
@@ -56,10 +56,6 @@ export default function Index() {
 
   // PRODUCT MODALS
   const openProductModal = (id, min, max, e) => {
-    console.log("Before opening modal:");
-    console.log("Modal iframe detected:", window.location);
-    console.log("Current document body:", document.body);
-    console.log("Can input be focused?", document.activeElement);
     e.preventDefault();
     e.stopPropagation();
 
@@ -69,8 +65,6 @@ export default function Index() {
     }));
 
     shopify.modal.show(`modal-${id}`);
-    console.log("after opening:", modalValues);
-
   };
 
   const handleValueChange = (id, field, value, e) => {

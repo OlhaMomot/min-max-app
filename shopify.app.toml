@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "44b95e366cc7dcb7b0eec8a0e28745c3"
-application_url = "https://zu-bm-injured-plates.trycloudflare.com"
+application_url = "https://bradford-consciousness-p-approx.trycloudflare.com"
 embedded = true
 name = "product-management"
 handle = "product-management-35"
@@ -21,15 +21,19 @@ api_version = "2025-01"
   topics = [ "app/scopes_update" ]
   uri = "/webhooks/app/scopes_update"
 
+  [[webhooks.subscriptions]]
+  topics = [ "carts/update" ]
+  uri = "/webhooks/app/carts_update"
+
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,read_cart_transforms"
+scopes = "write_products,read_orders,read_cart_transforms"
 
 [auth]
 redirect_urls = [
-  "https://zu-bm-injured-plates.trycloudflare.com/auth/callback",
-  "https://zu-bm-injured-plates.trycloudflare.com/auth/shopify/callback",
-  "https://zu-bm-injured-plates.trycloudflare.com/api/auth/callback"
+  "https://bradford-consciousness-p-approx.trycloudflare.com/auth/callback",
+  "https://bradford-consciousness-p-approx.trycloudflare.com/auth/shopify/callback",
+  "https://bradford-consciousness-p-approx.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
