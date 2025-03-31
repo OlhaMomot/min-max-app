@@ -42,7 +42,7 @@ export const loader = async ({ request }) => {
 export default function Index() {
   const fetcher = useFetcher();
   const shopify = useAppBridge();
-  const app_url = "https://carlo-spanking-urban-transit.trycloudflare.com";
+  const app_url = "https://enrolled-pharmacies-constructed-comment.trycloudflare.com";
   const isLoading =
     ["loading", "submitting"].includes(fetcher.state) &&
     fetcher.formMethod === "POST";

@@ -25,10 +25,7 @@ export function run(input) {
             target: "$.cart",
     }))
 
-  console.log("Validation Errors:", errors);
-
   return {
     errors,
   };
 }
-

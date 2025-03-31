@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "44b95e366cc7dcb7b0eec8a0e28745c3"
-application_url = "https://bradford-consciousness-p-approx.trycloudflare.com"
+application_url = "https://enrolled-pharmacies-constructed-comment.trycloudflare.com"
 embedded = true
 name = "product-management"
 handle = "product-management-35"
@@ -31,10 +31,15 @@ scopes = "write_products,read_orders,read_cart_transforms"
 
 [auth]
 redirect_urls = [
-  "https://bradford-consciousness-p-approx.trycloudflare.com/auth/callback",
-  "https://bradford-consciousness-p-approx.trycloudflare.com/auth/shopify/callback",
-  "https://bradford-consciousness-p-approx.trycloudflare.com/api/auth/callback"
+  "https://enrolled-pharmacies-constructed-comment.trycloudflare.com/auth/callback",
+  "https://enrolled-pharmacies-constructed-comment.trycloudflare.com/auth/shopify/callback",
+  "https://enrolled-pharmacies-constructed-comment.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
 embedded = false
+
+[[extensions]]
+name = "Cart Validation Embed"
+type = "theme_app_extension"
+metafields = [ ]

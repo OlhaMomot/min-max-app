@@ -45,7 +45,6 @@ export async function action({ request }) {
   const auth = await authenticate.admin(request);
   const token = auth.session.accessToken;
 
-
   // if (!productId || !shop) {
   //   return json({
   //     message: 'Missing data',
